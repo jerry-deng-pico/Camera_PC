@@ -4,6 +4,19 @@
 # Sets the minimum version of CMake required to build the native library.
 
 cmake_minimum_required(VERSION 3.4.1)
+# ##################### OpenCV 环境 ############################
+#设置OpenCV-android-sdk路径
+set( OpenCV_DIR D:/opencv-3.4.6-android/OpenCV-android-sdk/sdk/native/jni )
+find_package(OpenCV REQUIRED )
+if(OpenCV_FOUND)
+    include_directories(${OpenCV_INCLUDE_DIRS})
+    message(STATUS "OpenCV library status:")
+    message(STATUS "    version: ${OpenCV_VERSION}")
+    message(STATUS "    libraries: ${OpenCV_LIBS}")
+    message(STATUS "    include path: ${OpenCV_INCLUDE_DIRS}")
+else(OpenCV_FOUND)
+    message(FATAL_ERROR "OpenCV library not found")
+endif(OpenCV_FOUND)
 
 # Creates and names a library, sets it as either STATIC
 # or SHARED, and provides the relative paths to its source code.
@@ -17,7 +30,7 @@ add_library( # Sets the name of the library.
         SHARED
 
         # Provides a relative path to your source file(s).
-        native-lib.cpp)
+        native-lib.cpp )
 
 # Searches for a specified prebuilt library and stores the path as a
 # variable. Because CMake includes system libraries in the search path by
@@ -30,7 +43,7 @@ find_library( # Sets the name of the path variable.
 
         # Specifies the name of the NDK library that
         # you want CMake to locate.
-        log)
+        log )
 
 # Specifies libraries CMake should link to your target library. You
 # can link multiple libraries, such as libraries you define in this
@@ -38,7 +51,9 @@ find_library( # Sets the name of the path variable.
 
 target_link_libraries( # Specifies the target library.
         native-lib
-
+        ${OpenCV_LIBS}
+        log
+        jnigraphics
         # Links the target library to the log library
         # included in the NDK.
-        ${log-lib})
+        ${log-lib} )

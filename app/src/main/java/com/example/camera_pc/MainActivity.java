@@ -16,7 +16,6 @@ import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.Point;
 import android.graphics.PorterDuff;
-import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.hardware.SensorManager;
 import android.hardware.camera2.CameraAccessException;
@@ -41,21 +40,16 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.TextureView;
 import android.view.WindowManager;
+import android.widget.TextView;
 import android.widget.Toast;
 
-import com.quickbirdstudios.yuv2mat.Yuv;
 
-import org.opencv.android.OpenCVLoader;
-import org.opencv.core.Mat;
-import org.opencv.core.Scalar;
-import org.opencv.dnn.Dnn;
-import org.opencv.dnn.Net;
-import org.opencv.imgproc.Imgproc;
 
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -103,99 +97,7 @@ public class MainActivity extends AppCompatActivity {
     private Canvas canvas;     // 画布
     private int mRotateDegree; // 屏幕旋转角度：0/90/180/270
     private OrientationEventListener orientationListener;       // 监听屏幕旋转
-    private Net net;
-    private static final String[] classNames = {"Background","person",
-            "bicycle",
-            "car",
-            "motorcycle",
-            "airplane",
-            "bus",
-            "train",
-            "truck",
-            "boat",
-            "traffic light",
-            "fire hydrant",
-            "street sign",
-            "stop sign",
-            "parking meter",
-            "bench",
-            "bird",
-            "cat",
-            "dog",
-            "horse",
-            "sheep",
-            "cow",
-            "elephant",
-            "bear",
-            "zebra",
-            "giraffe",
-            "hat",
-            "backpack",
-            "umbrella",
-            "shoe",
-            "eye glasses",
-            "handbag",
-            "tie",
-            "suitcase",
-            "frisbee",
-            "skis",
-            "snowboard",
-            "sports ball",
-            "kite",
-            "baseball bat",
-            "baseball glove",
-            "skateboard",
-            "surfboard",
-            "tennis racket",
-            "bottle",
-            "plate",
-            "wine glass",
-            "cup",
-            "fork",
-            "knife",
-            "spoon",
-            "bowl",
-            "banana",
-            "apple",
-            "sandwich",
-            "orange",
-            "broccoli",
-            "carrot",
-            "hot dog",
-            "pizza",
-            "donut",
-            "cake",
-            "chair",
-            "couch",
-            "potted plant",
-            "bed",
-            "mirror",
-            "dining table",
-            "window",
-            "desk",
-            "toilet",
-            "door",
-            "tv",
-            "laptop",
-            "mouse",
-            "remote",
-            "keyboard",
-            "cell phone",
-            "microwave",
-            "oven",
-            "toaster",
-            "sink",
-            "refrigerator",
-            "blender",
-            "book",
-            "clock",
-            "vase",
-            "scissors",
-            "teddy bear",
-            "hair drier",
-            "toothbrush",
-            "hair brush"};
-
+    private TextView pc_text;
     /**
      *  SurfaceTexture监听器
      */
@@ -308,14 +210,14 @@ public class MainActivity extends AppCompatActivity {
                 Point screenSize = new Point();
                 getWindowManager().getDefaultDisplay().getSize(screenSize);
                 // 初始时将屏幕认为是横屏的
-                int screenWidth = screenSize.y;  // 2029
+                int screenWidth = screenSize.y;  // 1920
                 int screenHeight = screenSize.x; // 1080
                 Log.d(TAG, "screenWidth = "+screenWidth+", screenHeight = "+screenHeight); // 2029 1080
 
                 // swappedDimensions: (竖屏时true，横屏时false)
                 if (swappedDimensions) {
                     screenWidth = screenSize.x;  // 1080
-                    screenHeight = screenSize.y; // 2029
+                    screenHeight = screenSize.y; // 1920
                 }
                 // 尺寸太大时的极端处理
                 if (screenWidth > MAX_PREVIEW_HEIGHT) screenWidth = MAX_PREVIEW_HEIGHT;
@@ -516,6 +418,22 @@ public class MainActivity extends AppCompatActivity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         setContentView(R.layout.activity_main);
 
+        //初始化
+        readCacheLabelFromLocalFile();  // 读取model
+
+        // 初始化画框用的两个Paint和一个Canvas，避免在子线程中重复创建
+        paint_rect = new Paint();  // 画矩形的paint
+        paint_rect.setColor(Color.YELLOW);
+        paint_rect.setStyle(Paint.Style.STROKE);//不填充
+        paint_rect.setStrokeWidth(5); //线的宽度
+
+        paint_txt = new Paint();  // 写文本的paint
+        paint_txt.setColor(Color.RED);
+        paint_txt.setStyle(Paint.Style.FILL);//不填充
+        paint_txt.setTextSize(30.0f);  // 文本大小
+        paint_txt.setStrokeWidth(8); //线的宽度
+        canvas = new Canvas();  // 画布
+        pc_text=(TextView)findViewById(R.id.pc_text);
         // 得到UI
         mTextureView =  findViewById(R.id.texture);
         SurfaceView surfaceView = findViewById(R.id.preview_detector_surfaceView);
@@ -531,41 +449,21 @@ public class MainActivity extends AppCompatActivity {
     protected void onStart() {
         Log.d(TAG, "onStart: ");
         super.onStart();
-        initLoadOpenCVLibs();
-        readCacheLabelFromLocalFile();  // 读取model
 
-        // 初始化画框用的两个Paint和一个Canvas，避免在子线程中重复创建
-        paint_rect = new Paint();  // 画矩形的paint
-        paint_rect.setColor(Color.YELLOW);
-        paint_rect.setStyle(Paint.Style.STROKE);//不填充
-        paint_rect.setStrokeWidth(5); //线的宽度
-
-        paint_txt = new Paint();  // 写文本的paint
-        paint_txt.setColor(Color.RED);
-        paint_txt.setStyle(Paint.Style.FILL);//不填充
-        paint_txt.setTextSize(30.0f);  // 文本大小
-        paint_txt.setStrokeWidth(8); //线的宽度
-        canvas = new Canvas();  // 画布
     }
 
-    private void initLoadOpenCVLibs() {
-        boolean success= OpenCVLoader.initDebug();
 
-        if(success){
-
-            Log.d(TAG,"Load Library successfully......");
-
-        }
-    }
 
     private void readCacheLabelFromLocalFile() {
         fileModel="frozen_inference_graph.pb";
         fileWords="graph.pbtxt";
         String pbpath = getPath("frozen_inference_graph.pb", this);
         String configpath = getPath("graph.pbtxt", this);
-        net= Dnn.readNetFromTensorflow(pbpath,configpath);
+        load2JNI_SSD(pbpath,configpath);
         load_success=true;
     }
+
+    private native void load2JNI_SSD(String pbpath, String configpath);
 
     private static String getPath(String file, Context context) {
         AssetManager assetManager = context.getAssets();
@@ -594,13 +492,13 @@ public class MainActivity extends AppCompatActivity {
         Log.d(TAG, "onResume: ");
         super.onResume();
         startBackgroundThread();
-
         // 初始化Detector
-        load_success = false;
-        if(fileModel !=null && fileWords != null){
-            //load_success = BvaNative.detector_init(fileModel, fileWords,device.getValue());
-            Log.d(TAG, "onResume: load_success="+load_success);
-        }
+//        load_success = false;
+//        if(fileModel !=null && fileWords != null){
+//            readCacheLabelFromLocalFile();
+//            load_success=true;
+//            Log.d(TAG, "onResume: load_success="+load_success);
+//        }
 
         // 当屏幕关闭后重新打开, 若SurfaceTexture已经就绪, 此时onSurfaceTextureAvailable不会被回调, 这种情况下
         // 如果SurfaceTexture已经就绪, 则直接打开相机, 否则等待SurfaceTexture已经就绪的回调
@@ -625,7 +523,7 @@ public class MainActivity extends AppCompatActivity {
                 // （要在对应的画框处添加多余角度的Canvas的旋转）
                 orientation = (orientation + 45) / 90 * 90;
                 mRotateDegree = orientation % 360;
-                //Log.d(TAG, "mRotateDegree: "+mRotateDegree);
+                Log.d(TAG, "mRotateDegree: "+mRotateDegree);
             }
         };
 
@@ -687,69 +585,55 @@ public class MainActivity extends AppCompatActivity {
             mCameraOpenCloseLock.release();
         }
     }
-    private final static int EXECUTION_FREQUENCY = 1;
-    private int PREVIEW_RETURN_IMAGE_COUNT;
 
     private final ImageReader.OnImageAvailableListener mOnImageAvailableListener
             = new ImageReader.OnImageAvailableListener() {
         @Override
         public void onImageAvailable(ImageReader reader) {
-            // 设置识别的频率，当EXECUTION_FREQUENCY为5时，也就是此处被回调五次只识别一次
-            // 假若帧率被我设置在15帧/s，那么就是 1s 识别 3次，若是30帧/s，那就是1s识别6次，以此类推
-            PREVIEW_RETURN_IMAGE_COUNT++;
-            if (PREVIEW_RETURN_IMAGE_COUNT % EXECUTION_FREQUENCY != 0) return;
-            PREVIEW_RETURN_IMAGE_COUNT = 0;
-            final Image image = reader.acquireLatestImage();
+
             if (load_success) {
+                Log.d("minepc",load_success+"");
+                load_success=false;
+                final Image image = reader.acquireLatestImage();
+                final int width=image.getWidth();
+                final int height=image.getHeight();
+                final byte[] yuvdata=ImageUtil.getBytesFromImageAsType(image,0);
+                final int Degree=mRotateDegree;
+                Log.d("PCtest",yuvdata.length+"");
+
                  // 获取最近一帧图像
                 mBackgroundHandler.post(new Runnable() {
                     @Override
                     public void run() {
-                          Mat input = Yuv.rgb(image);  // 从YUV_420_888 到 Mat(RGB)，这里使用了第三方库，build.gradle中可见
-                        final int IN_WIDTH = 300;
-                        final int IN_HEIGHT = 300;
-                        final float WH_RATIO = (float)IN_WIDTH / IN_HEIGHT;
-                        final double IN_SCALE_FACTOR = 0.007843;
-                        final double MEAN_VAL = 127.5;
-                        final double THRESHOLD = 0.5;
-                        // Forward image through network.
-                        Mat blob = Dnn.blobFromImage(input, IN_SCALE_FACTOR,
-                                new org.opencv.core.Size(IN_WIDTH, IN_HEIGHT),
-                                new Scalar(MEAN_VAL, MEAN_VAL, MEAN_VAL), /*swapRB*/false, /*crop*/false);
-                        net.setInput(blob);
-                        Mat detections = net.forward();
-                        int cols = input.cols();
-                        int rows = input.rows();
-                        detections = detections.reshape(1, (int)detections.total() / 7);
-                        ArrayList<int []> results=new ArrayList<>();
-                        ArrayList<String> class_label=new ArrayList<>();
-                        for (int i = 0; i < detections.rows(); ++i) {
-                            double confidence = detections.get(i, 2)[0];
-                            if (confidence > THRESHOLD) {
-                                int[] loaction=new int[4];
-                                int classId = (int)detections.get(i, 1)[0];
-                                loaction[0]= (int)(detections.get(i, 3)[0] * cols);//left
-                                loaction[1]= (int)(detections.get(i, 4)[0] * rows);//top
-                                loaction[2]= (int)(detections.get(i, 5)[0] * cols);//right
-                                loaction[3]= (int)(detections.get(i, 6)[0] * rows);//bottom
-                                results.add(loaction);
-                                String label = classNames[classId] + ": " + confidence;
-                                class_label.add(label);
-                                Log.d("PCCC",label);
+                        int[] location=SSDdetetct(yuvdata,height,width,Degree);
+                        String[] classlabel=getlabel();
+                        if(location.length>0){
+                            String result="结果是: ";
+                            for(int textnum=0;textnum<classlabel.length;textnum++){
+                                result+=classlabel[textnum]+",";
                             }
+                            pc_text.setText(result);
+                            show_detect_results(classlabel,location);
                         }
-                        if(results.toArray().length>0){
-                            show_detect_results((String [])class_label.toArray(),(int [][])results.toArray());
-                        }
+                        Log.d("pcwork",location.length+"nothing!");
+                        load_success=true;
                     }
-
-
                 });
+
+                image.close();
+            }else {
+
+
             }
-            image.close();
+
         }
     };
 
+    private native String[] getlabel();
+
+    private native int[] SSDdetetct(byte[] yuvdata, int height, int width,int Degree);
+
+    //private native String[] getlabel() ;
 
 
 
@@ -758,7 +642,7 @@ public class MainActivity extends AppCompatActivity {
      * @param ，包含物体名称name、置信度confidence和用于画矩形的参数（x,y,width,height）
      *            name=floats[0]  confidence=floats[1]  x=floats[2] y=floats[3] width=floats[4] height=floats[5]
      */
-    private void show_detect_results(final String[] classlabel, final int[][] location) {
+    private void show_detect_results(final String[] classlabel, final int[] location) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -778,9 +662,9 @@ public class MainActivity extends AppCompatActivity {
                         canvas.rotate(180);
                     }
                 }
-                for (int i=0;i<classlabel.length;i++) {   // 画框并在框上方输出识别结果和置信度
-                    canvas.drawRect(location[i][0],location[i][1],location[i][2],location[i][3],paint_rect);
-                    canvas.drawText(classlabel[i],location[i][0],location[i][1], paint_txt);
+                for (int rectnum=0;rectnum<classlabel.length;rectnum++) {   // 画框并在框上方输出识别结果和置信度
+                    canvas.drawRect(location[rectnum*4],location[rectnum*4+1],location[rectnum*4+2],location[rectnum*4+3],paint_rect);
+                    canvas.drawText(classlabel[rectnum],location[rectnum*4],location[rectnum*4+1],paint_txt);
                 }
                 surfaceHolder.unlockCanvasAndPost(canvas);  // 释放
             }
